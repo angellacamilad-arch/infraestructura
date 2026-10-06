@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#120c1f">
+  <title>Dashboard | Análisis de ventas</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #120c1f;
+      color: #f7f5ff;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 82% 0%, rgba(115, 103, 240, 0.12), transparent 38%),
+        #120c1f;
+      color: #f7f5ff;
+    }
+    .panel {
+      border: 1px solid rgba(194, 190, 234, 0.11);
+      border-radius: 14px;
+      background: linear-gradient(145deg, rgba(40, 27, 64, 0.96), rgba(35, 24, 56, 0.96));
+      box-shadow: 0 16px 38px rgba(5, 3, 12, 0.18);
+    }
+    .panel-title {
+      border-bottom: 1px solid rgba(194, 190, 234, 0.14);
+      padding-bottom: 0.85rem;
+      color: #fff;
+    }
+    .muted { color: #aaa4cc; }
+    .chart-wrap { position: relative; width: 100%; height: 100%; min-height: 0; }
+    .store-chart-wrap { height: 460px; }
+    .trend-chart-wrap { height: 440px; }
+    .macro-chart-wrap { height: 360px; }
+    .filter-control {
+      min-height: 44px;
+      width: 100%;
+      border: 1px solid rgba(194, 190, 234, 0.18);
+      border-radius: 0.65rem;
+      background: #1a102a;
+      padding: 0.625rem 0.75rem;
+      color: #f7f5ff;
+      outline: none;
+    }
+    .filter-control:focus {
+      border-color: #8c82ff;
+      box-shadow: 0 0 0 3px rgba(140, 130, 255, 0.18);
+    }
+    .filter-control:disabled { opacity: 0.55; }
+    input[type="file"]::file-selector-button {
+      margin-right: 0.75rem;
+      border: 1px solid rgba(140, 130, 255, 0.28);
+      border-radius: 0.5rem;
+      background: rgba(115, 103, 240, 0.16);
+      padding: 0.55rem 0.75rem;
+      color: #d8d3ff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    input[type="file"] { color: #c2beea; }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.85); }
+    .status-message { border-radius: 12px; padding: 12px 16px; font-size: 0.875rem; }
+    @media (max-width: 767px) {
+      .trend-chart-wrap { height: 340px; }
+      .store-chart-wrap { height: 440px; }
+      .macro-chart-wrap { height: 310px; }
+    }
+  </style>
+</head>
+<body class="min-h-screen antialiased">
+  <main class="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+    <header class="mb-7 flex items-center justify-between gap-4">
+      <a href="#" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-violet-200/30 bg-white/[0.04] text-violet-100 transition hover:border-violet-300 hover:bg-violet-400/10" aria-label="Inicio">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+          <path d="m3.5 10 8.5-7 8.5 7v10a1 1 0 0 1-1 1h-5.25v-7h-4.5v7H4.5a1 1 0 0 1-1-1V10Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+      <div class="text-right">
+        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-violet-300/70">Walmart · retail analytics</p>
+        <h1 class="mt-1 text-xl font-normal tracking-tight text-[#c2beea] sm:text-3xl">
+          dashboard <span class="text-violet-300">|</span> análisis <strong class="font-bold text-white">de ventas</strong>
+        </h1>
+      </div>
+    </header>
+
+    <div id="statusMessage" class="status-message mb-5 hidden" role="status" aria-live="polite"></div>
+
+    <section aria-label="Dashboard de ventas" class="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-12">
+      <aside class="grid min-w-0 content-start gap-6 lg:col-span-4">
+        <section aria-label="Filtros" class="panel p-5">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <h2 class="panel-title flex-1 text-base font-semibold">Filtros</h2>
+            <button id="resetFilters" type="button" class="pb-3 text-xs font-semibold text-violet-300 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-40" disabled>
+              Restablecer
+            </button>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label for="periodFilter" class="muted mb-1.5 block text-xs font-medium">Periodo</label>
+              <select id="periodFilter" class="filter-control" disabled>
+                <option value="all">Todo el periodo</option>
+              </select>
+              <p id="periodHint" class="muted mt-1.5 text-[10px] leading-4">El periodo se detecta al cargar los datos.</p>
+            </div>
+            <div>
+              <label for="startDate" class="muted mb-1.5 block text-xs font-medium">Fecha inicio</label>
+              <input id="startDate" class="filter-control" type="date" disabled>
+            </div>
+            <div>
+              <label for="endDate" class="muted mb-1.5 block text-xs font-medium">Fecha fin</label>
+              <input id="endDate" class="filter-control" type="date" disabled>
+            </div>
+            <div>
+              <label for="storeFilter" class="muted mb-1.5 block text-xs font-medium">Tienda</label>
+              <select id="storeFilter" class="filter-control" disabled>
+                <option value="all">Todas las tiendas</option>
+              </select>
+            </div>
+            <div>
+              <label for="holidayFilter" class="muted mb-1.5 block text-xs font-medium">Tipo de semana</label>
+              <select id="holidayFilter" class="filter-control" disabled>
+                <option value="all">Festivas y normales</option>
+                <option value="1">Solo festivas</option>
+                <option value="0">Solo normales</option>
+              </select>
+            </div>
+            <div class="border-t border-white/[0.08] pt-3 sm:col-span-2">
+              <label for="csvFile" class="mb-2 block text-xs font-medium text-[#c2beea]">Archivo de datos</label>
+              <input id="csvFile" class="block w-full text-xs" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-describedby="loadHint">
+              <p id="loadHint" class="muted mt-2 text-[11px] leading-5">Se intenta cargar Walmart_Sales.xlsx automáticamente. También puedes elegir CSV o Excel.</p>
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="Ventas totales" class="panel relative overflow-hidden p-5 sm:p-6">
+          <div class="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-violet-500/10 blur-3xl"></div>
+          <h2 class="panel-title relative text-base font-semibold">Ventas Totales</h2>
+          <p id="totalSales" class="relative mt-5 break-words text-4xl font-bold tracking-tight text-white sm:text-5xl">—</p>
+          <p class="muted relative mt-2 text-xs">Facturación del periodo seleccionado</p>
+          <div class="relative mt-5 grid grid-cols-2 gap-3 border-t border-white/[0.08] pt-4">
+            <div>
+              <p class="muted text-[11px]">Promedio semanal</p>
+              <p id="averageSales" class="mt-1 text-sm font-semibold text-white">—</p>
+            </div>
+            <div>
+              <p class="muted text-[11px]">Tienda líder</p>
+              <p id="topStore" class="mt-1 text-sm font-semibold text-white">—</p>
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="Ventas por tienda" class="panel min-w-0 p-5">
+          <div class="mb-4">
+            <h2 class="panel-title text-base font-semibold">Ventas por Tienda</h2>
+            <p class="muted mt-2 text-xs">Top 10 por facturación en el periodo seleccionado</p>
+          </div>
+          <div class="chart-wrap store-chart-wrap"><canvas id="storeChart" aria-label="Top 10 tiendas por ventas totales"></canvas></div>
+        </section>
+
+        <section aria-label="Ventas en festivos y semanas normales" class="panel min-w-0 p-5">
+          <div class="mb-4">
+            <h2 class="panel-title text-base font-semibold">Festivos vs. Normales</h2>
+            <p id="holidayImpact" class="muted mt-2 text-xs">Distribución de ventas en el periodo</p>
+          </div>
+          <div class="chart-wrap" style="height:280px"><canvas id="holidayChart" aria-label="Distribución de ventas festivas y normales"></canvas></div>
+        </section>
+      </aside>
+
+      <section aria-label="Análisis temporal y macroeconómico" class="grid min-w-0 content-start gap-6 lg:col-span-8">
+        <article class="panel min-w-0 p-5 sm:p-6">
+          <div class="mb-4">
+            <h2 class="panel-title text-base font-semibold">Evolución de Ventas</h2>
+            <p class="muted mt-2 text-xs">Facturación mensual agregada · USD</p>
+          </div>
+          <div class="chart-wrap trend-chart-wrap"><canvas id="trendChart" aria-label="Evolución mensual de ventas"></canvas></div>
+        </article>
+        <article class="panel min-w-0 p-5 sm:p-6">
+          <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <h2 class="panel-title text-base font-semibold">Factores Macroeconómicos / Cantidad</h2>
+              <p id="macroDescription" class="muted mt-2 text-xs">Promedio mensual del factor seleccionado</p>
+            </div>
+            <div class="w-full sm:w-52">
+              <label for="factorFilter" class="sr-only">Factor macroeconómico</label>
+              <select id="factorFilter" class="filter-control text-sm">
+                <option value="Temperature">Temperatura</option>
+                <option value="Fuel_Price">Precio del combustible</option>
+                <option value="CPI">Índice de precios (CPI)</option>
+                <option value="Unemployment">Desempleo</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-wrap macro-chart-wrap"><canvas id="macroChart" aria-label="Evolución mensual del factor macroeconómico"></canvas></div>
+        </article>
+      </section>
+    </section>
+
+    <footer class="muted py-7 text-center text-xs">
+      El archivo se procesa localmente en este navegador; no se envía a ningún servidor.
+    </footer>
+  </main>
+
+  <script>
+    "use strict";
+
+    const REQUIRED_COLUMNS = [
+      "Store",
+      "Date",
+      "Weekly_Sales",
+      "Holiday_Flag",
+      "Temperature",
+      "Fuel_Price",
+      "CPI",
+      "Unemployment"
+    ];
+    const moneyFormatter = new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0
+    });
+    const compactMoneyFormatter = new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "USD",
+      notation: "compact",
+      maximumFractionDigits: 1
+    });
+    const numberFormatter = new Intl.NumberFormat("es-MX", {
+      maximumFractionDigits: 0
+    });
+    const elements = {
+      file: document.getElementById("csvFile"),
+      status: document.getElementById("statusMessage"),
+      store: document.getElementById("storeFilter"),
+      period: document.getElementById("periodFilter"),
+      periodHint: document.getElementById("periodHint"),
+      start: document.getElementById("startDate"),
+      end: document.getElementById("endDate"),
+      holiday: document.getElementById("holidayFilter"),
+      factor: document.getElementById("factorFilter"),
+      macroDescription: document.getElementById("macroDescription"),
+      reset: document.getElementById("resetFilters"),
+      totalSales: document.getElementById("totalSales"),
+      averageSales: document.getElementById("averageSales"),
+      holidayImpact: document.getElementById("holidayImpact"),
+      topStore: document.getElementById("topStore")
+    };
+
+    const FACTOR_SETTINGS = {
+      Temperature: { label: "Temperatura", unit: "°", color: "#8c82ff", digits: 1 },
+      Fuel_Price: { label: "Precio del combustible", unit: "USD", color: "#9e95ff", digits: 2 },
+      CPI: { label: "Índice de precios (CPI)", unit: "", color: "#7367f0", digits: 1 },
+      Unemployment: { label: "Desempleo", unit: "%", color: "#b0a8ff", digits: 2 }
+    };
+
+    Chart.defaults.color = "#c2beea";
+    Chart.defaults.font.family = "Inter, ui-sans-serif, system-ui, sans-serif";
+    Chart.defaults.font.size = 11;
+    Chart.defaults.plugins.legend.labels.color = "#c2beea";
+    Chart.defaults.plugins.datalabels = {
+      color: "#f7f5ff",
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", size: 10, weight: "600" },
+      textStrokeColor: "rgba(18, 12, 31, 0.8)",
+      textStrokeWidth: 3,
+      clamp: true
+    };
+    Chart.register(ChartDataLabels);
+
+    let salesData = [];
+    let datasetDates = [];
+    let originalDateRange = null;
+    let charts = {};
+
+    function showStatus(message, type) {
+      elements.status.textContent = message;
+      elements.status.className = "status-message mb-5 border";
+      if (type === "error") {
+        elements.status.classList.add("border-rose-300/20", "bg-rose-500/10", "text-rose-200");
+      } else if (type === "success") {
+        elements.status.classList.add("border-emerald-300/20", "bg-emerald-500/10", "text-emerald-200");
+      } else {
+        elements.status.classList.add("border-violet-300/20", "bg-violet-500/10", "text-violet-100");
+      }
+    }
+
+    function hideStatus() {
+      elements.status.className = "status-message mb-5 hidden";
+      elements.status.textContent = "";
+    }
+
+    function parseDate(value) {
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return validDate(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate());
+      }
+      if (typeof value === "number" && window.XLSX) {
+        const excelDate = XLSX.SSF.parse_date_code(value);
+        if (excelDate) return validDate(excelDate.y, excelDate.m, excelDate.d);
+      }
+      const text = String(value ?? "").trim();
+      let match = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (match) {
+        return validDate(Number(match[3]), Number(match[2]), Number(match[1]));
+      }
+
+      match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (match) {
+        return validDate(Number(match[1]), Number(match[2]), Number(match[3]));
+      }
+
+      match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (match) {
+        return validDate(Number(match[3]), Number(match[2]), Number(match[1]));
+      }
+
+      return null;
+    }
+
+    function validDate(year, month, day) {
+      const date = new Date(Date.UTC(year, month - 1, day));
+      if (
+        date.getUTCFullYear() !== year ||
+        date.getUTCMonth() !== month - 1 ||
+        date.getUTCDate() !== day
+      ) {
+        return null;
+      }
+      return date.toISOString().slice(0, 10);
+    }
+
+    function parseNumber(value) {
+      if (typeof value === "number") return Number.isFinite(value) ? value : null;
+      const text = String(value ?? "").trim().replace(/[$,\s]/g, "");
+      if (!text) return null;
+      const number = Number(text);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function normalizeRow(row) {
+      const normalized = {};
+      for (const [key, value] of Object.entries(row)) {
+        normalized[String(key).trim().replace(/^\uFEFF/, "")] = value;
+      }
+
+      const store = parseNumber(normalized.Store);
+      const weeklySales = parseNumber(normalized.Weekly_Sales);
+      const holidayFlag = parseNumber(normalized.Holiday_Flag);
+      const date = parseDate(normalized.Date);
+      if (
+        store === null ||
+        !Number.isInteger(store) ||
+        weeklySales === null ||
+        (holidayFlag !== 0 && holidayFlag !== 1) ||
+        date === null
+      ) {
+        return null;
+      }
+
+      return {
+        Store: store,
+        Date: date,
+        Weekly_Sales: weeklySales,
+        Holiday_Flag: holidayFlag,
+        Temperature: parseNumber(normalized.Temperature),
+        Fuel_Price: parseNumber(normalized.Fuel_Price),
+        CPI: parseNumber(normalized.CPI),
+        Unemployment: parseNumber(normalized.Unemployment)
+      };
+    }
+
+    function setControlsEnabled(enabled) {
+      elements.store.disabled = !enabled;
+      elements.period.disabled = !enabled;
+      elements.start.disabled = !enabled;
+      elements.end.disabled = !enabled;
+      elements.holiday.disabled = !enabled;
+      elements.reset.disabled = !enabled;
+    }
+
+    function initializeFilters() {
+      const stores = [...new Set(salesData.map((row) => row.Store))].sort((a, b) => a - b);
+      elements.store.replaceChildren(new Option("Todas las tiendas", "all"));
+      for (const store of stores) {
+        elements.store.add(new Option(`Tienda ${store}`, String(store)));
+      }
+
+      datasetDates = [...new Set(salesData.map((row) => row.Date))].sort();
+      originalDateRange = { start: datasetDates[0], end: datasetDates[datasetDates.length - 1] };
+
+      elements.start.min = originalDateRange.start;
+      elements.start.max = originalDateRange.end;
+      elements.end.min = originalDateRange.start;
+      elements.end.max = originalDateRange.end;
+      elements.start.value = originalDateRange.start;
+      elements.end.value = originalDateRange.end;
+
+      elements.period.replaceChildren();
+      elements.period.add(new Option(
+        `Todo el periodo (${formatPeriodDate(originalDateRange.start)} – ${formatPeriodDate(originalDateRange.end)})`,
+        "all"
+      ));
+
+      const years = [...new Set(datasetDates.map((date) => date.slice(0, 4)))].sort();
+      for (const year of years) {
+        const yearDates = datasetDates.filter((date) => date.startsWith(`${year}-`));
+        const start = yearDates[0];
+        const end = yearDates[yearDates.length - 1];
+        elements.period.add(new Option(
+          `Año ${year} (${formatMonthYear(start)} – ${formatMonthYear(end)})`,
+          `year:${year}`
+        ));
+      }
+
+      const quarters = new Map();
+      for (const date of datasetDates) {
+        const { year, quarter } = getRetailQuarter(date);
+        const key = `${year}-Q${quarter}`;
+        const range = quarters.get(key) ?? { start: date, end: date, year, quarter };
+        range.end = date;
+        quarters.set(key, range);
+      }
+      if (quarters.size) {
+        const quarterGroup = document.createElement("optgroup");
+        quarterGroup.label = "Trimestres reales · calendario Walmart";
+        for (const [key, range] of quarters) {
+          quarterGroup.append(new Option(
+            `Q${range.quarter} ${range.year}`,
+            `quarter:${key}`
+          ));
+        }
+        elements.period.add(quarterGroup);
+      }
+      elements.period.value = "all";
+      elements.store.value = "all";
+      elements.holiday.value = "all";
+      updatePeriodHint();
+      setControlsEnabled(true);
+    }
+
+    function formatPeriodDate(isoDate) {
+      const [year, month, day] = isoDate.split("-").map(Number);
+      const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+      return `${String(day).padStart(2, "0")}/${monthNames[month - 1]}/${year}`;
+    }
+
+    function formatMonthYear(isoDate) {
+      const [year, month] = isoDate.split("-").map(Number);
+      const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+      return `${monthNames[month - 1]} ${year}`;
+    }
+
+    function getRetailQuarter(isoDate) {
+      const [calendarYear, month] = isoDate.split("-").map(Number);
+      if (month === 1) return { year: calendarYear - 1, quarter: 4 };
+      return {
+        year: calendarYear,
+        quarter: Math.floor((month - 2) / 3) + 1
+      };
+    }
+
+    function updatePeriodHint() {
+      const { start, end } = getActiveDateRange();
+      if (!start || !end) return;
+      elements.periodHint.textContent = `${formatPeriodDate(start)} – ${formatPeriodDate(end)}`;
+    }
+
+    function getActiveDateRange() {
+      const period = elements.period.value;
+      if (!originalDateRange) return null;
+      if (period === "all") return originalDateRange;
+      if (period.startsWith("year:")) {
+        const year = period.slice(5);
+        const yearDates = datasetDates.filter((date) => date.startsWith(`${year}-`));
+        if (yearDates.length) {
+          return {
+            start: yearDates.reduce((minimum, date) => date < minimum ? date : minimum),
+            end: yearDates.reduce((maximum, date) => date > maximum ? date : maximum)
+          };
+        }
+      }
+      if (period.startsWith("quarter:")) {
+        const [, key] = period.split(":");
+        const [year, quarterText] = key.split("-");
+        const quarter = Number(quarterText.slice(1));
+        const quarterDates = datasetDates.filter((date) => {
+          const retailQuarter = getRetailQuarter(date);
+          return retailQuarter.year === Number(year) && retailQuarter.quarter === quarter;
+        });
+        if (quarterDates.length) {
+          return { start: quarterDates[0], end: quarterDates[quarterDates.length - 1] };
+        }
+      }
+      if (period === "custom") {
+        return { start: elements.start.value, end: elements.end.value };
+      }
+      return originalDateRange;
+    }
+
+    function applySelectedPeriod() {
+      const customOption = [...elements.period.options].find((option) => option.value === "custom");
+      if (customOption && elements.period.value !== "custom") customOption.remove();
+      const range = getActiveDateRange();
+      if (!range) return;
+      elements.start.value = range.start;
+      elements.end.value = range.end;
+      updatePeriodHint();
+      refreshDashboard();
+    }
+
+    function applyCustomDateRange(changedInput) {
+      if (!originalDateRange) return;
+      if (elements.start.value > elements.end.value) {
+        if (changedInput === elements.start) {
+          elements.end.value = elements.start.value;
+        } else {
+          elements.start.value = elements.end.value;
+        }
+      }
+
+      const customLabel = `Rango personalizado (${formatPeriodDate(elements.start.value)} – ${formatPeriodDate(elements.end.value)})`;
+      let customOption = [...elements.period.options].find((option) => option.value === "custom");
+      if (!customOption) {
+        customOption = new Option(customLabel, "custom");
+        elements.period.add(customOption);
+      } else {
+        customOption.textContent = customLabel;
+      }
+      elements.period.value = "custom";
+      updatePeriodHint();
+      refreshDashboard();
+    }
+
+    function getFilteredData(includeHolidayFilter = true) {
+      const selectedStore = elements.store.value;
+      const { start, end } = getActiveDateRange();
+      const holiday = elements.holiday.value;
+
+      return salesData.filter((row) => (
+        (selectedStore === "all" || row.Store === Number(selectedStore)) &&
+        row.Date >= start &&
+        row.Date <= end &&
+        (!includeHolidayFilter || holiday === "all" || row.Holiday_Flag === Number(holiday))
+      ));
+    }
+
+    function sumSales(rows) {
+      return rows.reduce((sum, row) => sum + row.Weekly_Sales, 0);
+    }
+
+    function groupSales(rows, keySelector) {
+      const totals = new Map();
+      for (const row of rows) {
+        const key = keySelector(row);
+        totals.set(key, (totals.get(key) ?? 0) + row.Weekly_Sales);
+      }
+      return totals;
+    }
+
+    function formatMoney(value) {
+      return moneyFormatter.format(Number.isFinite(value) ? value : 0);
+    }
+
+    function formatCompactMoney(value) {
+      if (!Number.isFinite(value)) return "—";
+      if (Math.abs(value) >= 1_000_000_000) {
+        return `USD ${(value / 1_000_000_000).toLocaleString("es-MX", { maximumFractionDigits: 1 })} mil M`;
+      }
+      if (Math.abs(value) >= 1_000_000) {
+        return `USD ${(value / 1_000_000).toLocaleString("es-MX", { maximumFractionDigits: 1 })} M`;
+      }
+      if (Math.abs(value) >= 1_000) {
+        return `USD ${(value / 1_000).toLocaleString("es-MX", { maximumFractionDigits: 1 })} mil`;
+      }
+      return formatMoney(value);
+    }
+
+    function formatChartMoney(value) {
+      if (Math.abs(value) >= 1_000_000_000) {
+        return `${(value / 1_000_000_000).toLocaleString("es-MX", { maximumFractionDigits: 0 })} mil M`;
+      }
+      if (Math.abs(value) >= 1_000_000) {
+        return `${(value / 1_000_000).toLocaleString("es-MX", { maximumFractionDigits: 0 })} M`;
+      }
+      if (Math.abs(value) >= 1_000) {
+        return `${(value / 1_000).toLocaleString("es-MX", { maximumFractionDigits: 0 })} mil`;
+      }
+      return numberFormatter.format(value);
+    }
+
+    function updateMetrics(filtered, comparisonData) {
+      const total = sumSales(filtered);
+      const average = filtered.length ? total / filtered.length : null;
+      const holidayRows = comparisonData.filter((row) => row.Holiday_Flag === 1);
+      const regularRows = comparisonData.filter((row) => row.Holiday_Flag === 0);
+      const holidayTotal = sumSales(holidayRows);
+      const regularTotal = sumSales(regularRows);
+
+      elements.totalSales.textContent = average === null ? "—" : formatCompactMoney(total);
+      elements.averageSales.textContent = average === null ? "—" : formatCompactMoney(average);
+      if (!holidayRows.length || !regularRows.length || regularTotal === 0) {
+        elements.holidayImpact.textContent = "No hay ambos tipos de semana para comparar";
+      } else {
+        const percent = ((holidayTotal / regularTotal) - 1) * 100;
+        const sign = percent > 0 ? "+" : "";
+        elements.holidayImpact.textContent =
+          `Festivos ${compactMoneyFormatter.format(holidayTotal)} · Normales ${compactMoneyFormatter.format(regularTotal)} · ${sign}${percent.toFixed(1)}%`;
+      }
+
+      if (!filtered.length) {
+        elements.topStore.textContent = "—";
+        return;
+      }
+
+      const storeTotals = groupSales(filtered, (row) => row.Store);
+      let top = null;
+      for (const [store, amount] of storeTotals) {
+        if (!top || amount > top.amount) top = { store, amount };
+      }
+      elements.topStore.textContent = `Tienda ${top.store}`;
+    }
+
+    function chartOptions(yTitle, compactAxis = false) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          datalabels: { display: false },
+          legend: {
+            position: "bottom",
+            labels: {
+              usePointStyle: true,
+              boxWidth: 8,
+              padding: 18,
+              color: "#c2beea"
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                const value = context.parsed.y ?? context.parsed.x ?? 0;
+                return `${context.dataset.label}: ${formatMoney(value)}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(255, 255, 255, 0.05)", drawBorder: false },
+            border: { display: false },
+            ticks: {
+              color: "#c2beea",
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 12,
+              font: { size: 10 }
+            }
+          },
+          y: {
+            beginAtZero: true,
+            title: { display: Boolean(yTitle), text: yTitle, color: "#c2beea" },
+            grid: { color: "rgba(255, 255, 255, 0.05)", drawBorder: false },
+            border: { display: false },
+            ticks: {
+              color: "#c2beea",
+              callback(value) {
+                return compactAxis
+                  ? compactMoneyFormatter.format(value)
+                  : moneyFormatter.format(value);
+              }
+            }
+          }
+        }
+      };
+    }
+
+    function replaceChart(name, canvasId, config) {
+      if (charts[name]) charts[name].destroy();
+      const canvas = document.getElementById(canvasId);
+      charts[name] = new Chart(canvas, config);
+    }
+
+    function updateCharts(filtered, comparisonData) {
+      const monthlyTotals = groupSales(filtered, (row) => row.Date.slice(0, 7));
+      const months = [...monthlyTotals.keys()].sort();
+      const monthLabels = months.map((month) => {
+        const [year, monthNumber] = month.split("-").map(Number);
+        const label = new Intl.DateTimeFormat("es-MX", { month: "short", timeZone: "UTC" })
+          .format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+        return `${label.replace(".", "")} ${String(year).slice(2)}`;
+      });
+      replaceChart("trend", "trendChart", {
+        type: "bar",
+        data: {
+          labels: monthLabels,
+          datasets: [{
+            label: "Ventas mensuales",
+            data: months.map((month) => monthlyTotals.get(month)),
+            backgroundColor: "rgba(115, 103, 240, 0.78)",
+            hoverBackgroundColor: "#9e95ff",
+            borderColor: "#8c82ff",
+            borderWidth: 1,
+            borderRadius: 5,
+            maxBarThickness: 28
+          }]
+        },
+        options: {
+          ...chartOptions("Ventas (USD)", true),
+          layout: { padding: { top: 20, right: 8 } },
+          plugins: {
+            ...chartOptions("Ventas (USD)", true).plugins,
+            datalabels: {
+              display(context) {
+                const lastIndex = context.dataset.data.length - 1;
+                return context.dataIndex % 2 === 0 || context.dataIndex === lastIndex;
+              },
+              anchor: "end",
+              align: "top",
+              offset: 2,
+              font: { size: 8, weight: "600" },
+              formatter: formatChartMoney
+            },
+            tooltip: {
+              callbacks: {
+                label(context) {
+                  return `Ventas: ${formatMoney(context.parsed.y)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: {
+                color: "#c2beea",
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 14,
+                font: { size: 10 }
+              }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: "rgba(255, 255, 255, 0.05)", drawBorder: false },
+              border: { display: false },
+              ticks: {
+                color: "#c2beea",
+                callback(value) { return compactMoneyFormatter.format(value); }
+              }
+            }
+          }
+        }
+      });
+
+      const storeTotals = groupSales(filtered, (row) => row.Store);
+      const stores = [...storeTotals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .reverse();
+      replaceChart("stores", "storeChart", {
+        type: "bar",
+        data: {
+          labels: stores.map(([store]) => `Tienda ${store}`),
+          datasets: [{
+            label: "Ventas totales",
+            data: stores.map(([, total]) => total),
+            backgroundColor: stores.map((_, index) => (
+              index === stores.length - 1 ? "#9e95ff" : "rgba(140, 130, 255, 0.76)"
+            )),
+            borderRadius: 5,
+            maxBarThickness: 24,
+            barPercentage: 0.58,
+            categoryPercentage: 0.78
+          }]
+        },
+        options: {
+          ...chartOptions("", true),
+          indexAxis: "y",
+          layout: { padding: { right: 48, top: 6, bottom: 6 } },
+          plugins: {
+            ...chartOptions("", true).plugins,
+            legend: { display: false },
+            datalabels: {
+              display: true,
+              anchor: "end",
+              align: "right",
+              offset: 5,
+              color: "#e8e5ff",
+              font: { size: 10, weight: "600" },
+              formatter: formatChartMoney
+            },
+            tooltip: {
+              callbacks: {
+                label(context) { return formatMoney(context.parsed.x); }
+              }
+            }
+          },
+          scales: {
+            x: {
+              beginAtZero: true,
+              grid: { color: "rgba(255, 255, 255, 0.05)", drawBorder: false },
+              border: { display: false },
+              ticks: {
+                font: { size: 10 },
+                color: "#c2beea",
+                callback(value) { return compactMoneyFormatter.format(value); }
+              }
+            },
+            y: {
+              grid: { display: false, drawBorder: false },
+              border: { display: false },
+              ticks: {
+                autoSkip: false,
+                color: "#dedaf6",
+                padding: 8,
+                font: { size: 11, weight: "500" }
+              }
+            }
+          }
+        }
+      });
+
+      const holidayRows = [
+        comparisonData.filter((row) => row.Holiday_Flag === 0),
+        comparisonData.filter((row) => row.Holiday_Flag === 1)
+      ];
+      const holidayTotals = holidayRows.map(sumSales);
+      replaceChart("holiday", "holidayChart", {
+        type: "doughnut",
+        data: {
+          labels: ["Semanas normales", "Semanas festivas"],
+          datasets: [{
+            label: "Ventas",
+            data: holidayTotals,
+            backgroundColor: ["#7367f0", "#9e95ff"],
+            borderColor: "#231838",
+            borderWidth: 4,
+            hoverOffset: 8
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "66%",
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: {
+                color: "#dedaf6",
+                usePointStyle: true,
+                pointStyle: "circle",
+                padding: 18,
+                font: { size: 11 }
+              }
+            },
+            datalabels: {
+              display(context) {
+                return holidayTotals[context.dataIndex] > 0;
+              },
+              color: "#fff",
+              font: { size: 10, weight: "700" },
+              formatter(value, context) {
+                const total = holidayTotals.reduce((sum, item) => sum + item, 0);
+                const percent = total ? (value / total) * 100 : 0;
+                return `${context.chart.data.labels[context.dataIndex]}\n${percent.toFixed(1)}%`;
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label(context) {
+                  const count = holidayRows[context.dataIndex].length;
+                  return `${context.label}: ${formatMoney(context.parsed)} · ${numberFormatter.format(count)} registros`;
+                }
+              }
+            }
+          }
+        }
+      });
+
+      updateMacroChart(filtered, months, monthLabels);
+    }
+
+    function updateMacroChart(filtered, months, monthLabels) {
+      const field = elements.factor.value;
+      const setting = FACTOR_SETTINGS[field];
+      const monthlyValues = new Map();
+      for (const row of filtered) {
+        const value = row[field];
+        if (!Number.isFinite(value)) continue;
+        const month = row.Date.slice(0, 7);
+        const current = monthlyValues.get(month) ?? { sum: 0, count: 0 };
+        current.sum += value;
+        current.count += 1;
+        monthlyValues.set(month, current);
+      }
+      const values = months.map((month) => {
+        const aggregate = monthlyValues.get(month);
+        return aggregate ? aggregate.sum / aggregate.count : null;
+      });
+      elements.macroDescription.textContent = `${setting.label} · promedio mensual`;
+
+      replaceChart("macro", "macroChart", {
+        type: "line",
+        data: {
+          labels: monthLabels,
+          datasets: [{
+            label: setting.label,
+            data: values,
+            borderColor: setting.color,
+            backgroundColor: "rgba(115, 103, 240, 0.18)",
+            fill: true,
+            tension: 0.28,
+            borderWidth: 2.5,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            pointBackgroundColor: "#c2beea",
+            pointBorderColor: setting.color,
+            pointBorderWidth: 2,
+            spanGaps: false
+          }]
+        },
+        options: {
+          ...chartOptions("", false),
+          layout: { padding: { top: 20, right: 8 } },
+          plugins: {
+            ...chartOptions("", false).plugins,
+            datalabels: {
+              display(context) {
+                const lastIndex = context.dataset.data.length - 1;
+                return context.dataset.data[context.dataIndex] !== null &&
+                  (context.dataIndex % 3 === 0 || context.dataIndex === lastIndex);
+              },
+              align: "top",
+              anchor: "end",
+              offset: 3,
+              color: "#dedaf6",
+              font: { size: 9, weight: "600" },
+              formatter(value) {
+                return `${Number(value).toLocaleString("es-MX", {
+                  maximumFractionDigits: setting.digits
+                })}${setting.unit}`;
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label(context) {
+                  const value = context.parsed.y;
+                  return `${setting.label}: ${Number(value).toLocaleString("es-MX", {
+                    maximumFractionDigits: setting.digits
+                  })}${setting.unit}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: {
+                color: "#c2beea",
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 14,
+                font: { size: 10 }
+              }
+            },
+            y: {
+              grid: { color: "rgba(255, 255, 255, 0.05)", drawBorder: false },
+              border: { display: false },
+              ticks: { color: "#c2beea" }
+            }
+          }
+        }
+      });
+    }
+
+    function refreshDashboard() {
+      if (!salesData.length) return;
+      const filtered = getFilteredData(true);
+      const comparisonData = getFilteredData(false);
+      updateMetrics(filtered, comparisonData);
+      updateCharts(filtered, comparisonData);
+
+      if (!filtered.length) {
+        showStatus("No hay registros para la combinación actual de filtros. Prueba con otro rango, tienda o tipo de semana.", "info");
+      } else {
+        hideStatus();
+      }
+    }
+
+    function processRows(rows, headers, fileName) {
+      const cleanHeaders = headers.map((header) =>
+        String(header).trim().replace(/^\uFEFF/, "")
+      );
+      const missing = REQUIRED_COLUMNS.filter((column) => !cleanHeaders.includes(column));
+      if (missing.length) {
+        salesData = [];
+        setControlsEnabled(false);
+        showStatus(`El archivo no contiene todas las columnas necesarias. Faltan: ${missing.join(", ")}.`, "error");
+        return;
+      }
+
+      const normalizedRows = rows.map(normalizeRow);
+      const invalidCount = normalizedRows.filter((row) => row === null).length;
+      salesData = normalizedRows.filter((row) => row !== null);
+      if (!salesData.length) {
+        setControlsEnabled(false);
+        showStatus("El archivo no contiene registros válidos. Comprueba las fechas, ventas, tiendas y Holiday_Flag.", "error");
+        return;
+      }
+
+      initializeFilters();
+      refreshDashboard();
+      const warning = invalidCount
+        ? ` Se omitieron ${numberFormatter.format(invalidCount)} filas con datos requeridos inválidos.`
+        : "";
+      showStatus(
+        `${fileName}: ${numberFormatter.format(salesData.length)} registros cargados correctamente.${warning}`,
+        invalidCount ? "info" : "success"
+      );
+    }
+
+    async function loadFile(file) {
+      if (!window.Papa || !window.Chart || !window.XLSX || !window.ChartDataLabels) {
+        showStatus("No se pudieron cargar las librerías del dashboard. Comprueba tu conexión a Internet y recarga la página.", "error");
+        return;
+      }
+
+      showStatus(`Leyendo ${file.name}…`, "info");
+      if (/\.csv$/i.test(file.name)) {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: "greedy",
+          dynamicTyping: false,
+          complete(results) {
+            const headers = results.meta.fields ?? [];
+            processRows(results.data, headers, file.name);
+          },
+          error(error) {
+            showStatus(`No se pudo leer el CSV: ${error.message}`, "error");
+          }
+        });
+        return;
+      }
+
+      if (!/\.xlsx$/i.test(file.name)) {
+        showStatus("Formato no compatible. Selecciona un archivo .csv o .xlsx.", "error");
+        return;
+      }
+
+      try {
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!firstSheet) throw new Error("El libro no contiene hojas de cálculo.");
+        const matrix = XLSX.utils.sheet_to_json(firstSheet, {
+          header: 1,
+          raw: true,
+          defval: null,
+          blankrows: false
+        });
+        if (!matrix.length) throw new Error("La primera hoja está vacía.");
+        const headers = matrix[0];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, {
+          raw: true,
+          defval: null,
+          blankrows: false
+        });
+        processRows(rows, headers, file.name);
+      } catch (error) {
+        showStatus(`No se pudo leer el archivo Excel: ${error.message}`, "error");
+      }
+    }
+
+    elements.file.addEventListener("change", (event) => {
+      const file = event.target.files?.[0];
+      if (file) loadFile(file);
+    });
+
+    elements.store.addEventListener("change", refreshDashboard);
+    elements.period.addEventListener("change", applySelectedPeriod);
+    elements.start.addEventListener("change", () => applyCustomDateRange(elements.start));
+    elements.end.addEventListener("change", () => applyCustomDateRange(elements.end));
+    elements.holiday.addEventListener("change", refreshDashboard);
+    elements.factor.addEventListener("change", () => {
+      if (!salesData.length) return;
+      const filtered = getFilteredData(true);
+      const monthlyTotals = groupSales(filtered, (row) => row.Date.slice(0, 7));
+      const months = [...monthlyTotals.keys()].sort();
+      const monthLabels = months.map((month) => {
+        const [year, monthNumber] = month.split("-").map(Number);
+        const label = new Intl.DateTimeFormat("es-MX", { month: "short", timeZone: "UTC" })
+          .format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+        return `${label.replace(".", "")} ${String(year).slice(2)}`;
+      });
+      updateMacroChart(filtered, months, monthLabels);
+    });
+    elements.reset.addEventListener("click", () => {
+      if (!originalDateRange) return;
+      elements.store.value = "all";
+      elements.period.value = "all";
+      elements.holiday.value = "all";
+      applySelectedPeriod();
+    });
+
+    if (!window.Papa || !window.Chart || !window.XLSX || !window.ChartDataLabels) {
+      showStatus("No se pudieron cargar las librerías del dashboard. Comprueba tu conexión a Internet y recarga la página.", "error");
+    } else {
+      showStatus("Intentando cargar Walmart_Sales.xlsx automáticamente…", "info");
+      fetch("./Walmart_Sales.xlsx")
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`El navegador respondió ${response.status}.`);
+          }
+          return response.arrayBuffer();
+        })
+        .then((buffer) => {
+          const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          if (!firstSheet) throw new Error("El libro no contiene hojas de cálculo.");
+          const matrix = XLSX.utils.sheet_to_json(firstSheet, {
+            header: 1,
+            raw: true,
+            defval: null,
+            blankrows: false
+          });
+          if (!matrix.length) throw new Error("La primera hoja está vacía.");
+          const rows = XLSX.utils.sheet_to_json(firstSheet, {
+            raw: true,
+            defval: null,
+            blankrows: false
+          });
+          processRows(rows, matrix[0], "Walmart_Sales.xlsx");
+        })
+        .catch((error) => {
+          const fileUrl = window.location.protocol === "file:";
+          const reason = fileUrl
+            ? "Al abrir index.html directamente (file://), el navegador bloquea la carga automática por seguridad."
+            : `No se encontró o no se pudo leer el Excel junto a index.html (${error.message}).`;
+          showStatus(`${reason} Selecciona Walmart_Sales.xlsx o un archivo CSV con el botón de carga.`, "info");
+        });
+    }
+  </script>
+</body>
+</html>
